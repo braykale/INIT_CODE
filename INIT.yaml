@@ -1,0 +1,106 @@
+Parameters:
+  InstanceTypeParameter:
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - m1.small
+      - m1.large
+    Description: Enter t2.micro, m1.small, or m1.large. Default is t2.micro. 
+  MYKeys: 
+    Type: "AWS::EC2::KeyPair::KeyName"
+    Description: Amazon EC2 Key Pair
+  NameOfService: 
+    Type: "String"
+    Description: "Name of the service for which this stack will be used for" 
+Mappings: 
+  AMIRegionMap: 
+    us-east-1: 
+      AMI: "ami-0b0dcb5067f052a63"
+    us-west-1: 
+      AMI: "ami-0f5e8a042c8bfcd5e"
+    eu-west-1: 
+       AMI: "ami-01cae1550c0adea9c"
+    ap-southeast-1: 
+      AMI: "ami-0af2f764c580cc1f9"
+    ap-northeast-1: 
+      AMI: "ami-072bfb8ae2c884cc4"
+Resources:
+  WebServer:
+    Type: AWS::EC2::Instance
+    Metadata:
+      AWS::CloudFormation::Init:
+        config: 
+          packages: 
+            yum: 
+              php: []
+              httpd: []
+              wget: []
+              unzip: []
+              git: []
+          commands: 
+            test:
+              command: "wget https://www.tooplate.com/zip-templates/2132_clean_work.zip && unzip 2132_clean_work.zip && sudo cp -r 2132_clean_work/* /var/www/html/"
+          files:
+            /var/www/html/Hello.html:
+              content: !Sub |
+                <!DOCTYPE html>
+                <html>
+                <body>
+
+                <h1>Welcome To CloudFormation.</h1>
+                <p>This WebSite is Deployed by CloudFormation.</p>
+
+                </body>
+                </html> 
+          services:
+            sysvinit:
+              httpd:
+                enabled: true
+                ensureRunning: true
+
+    Properties:
+       InstanceType: !Ref InstanceTypeParameter
+       KeyName: !Ref MYKeys
+       ImageId: !FindInMap
+         - AMIRegionMap
+         - !Ref AWS::Region
+         - AMI
+       Tags:
+         - Key: "Name"
+           Value: !Ref NameOfService
+       SecurityGroups: 
+          - !Ref VprofileSG
+       UserData:
+        'Fn::Base64':
+          !Sub |
+             #!/bin/bash -xe
+             #Initialize bash shell
+             yum install aws-cfn-bootstrap -y
+             #Ensure AWS bootStrap is latest
+             /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource WebServer --region ${AWS::Region}
+             # Installs files and commandsn from MetaData
+             /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource WebServer --region ${AWS::Region}
+             #Passes exit code value after execution of the init script to Stack, and based on the exit code the stack will either fail or create.  
+    
+  VprofileSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+     GroupDescription: Allow SSH & http from my IP.
+     SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 103.54.97.2/32
+
+Outputs:
+  PrintSomeInfo:
+    Description: The DNSName of EC2 instance.
+    Value: !GetAtt 
+       - WebServer
+       - PublicDnsName
+    
